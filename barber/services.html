@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Services — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Manage Services</h1>
+  <p><a href="dashboard.html">← Back to Dashboard</a></p>
+
+  <h2>Add a Service</h2>
+  <form id="serviceForm">
+    <label>Name<br>
+      <input type="text" id="name" required>
+    </label><br><br>
+    <label>Description<br>
+      <textarea id="description" rows="2"></textarea>
+    </label><br><br>
+    <label>Price (₦)<br>
+      <input type="number" id="price" required min="0" step="1">
+    </label><br><br>
+    <label>Duration (minutes)<br>
+      <input type="number" id="duration" required min="5" step="5">
+    </label><br><br>
+    <button type="submit">Add Service</button>
+  </form>
+  <p id="formMessage"></p>
+
+  <h2>Your Services</h2>
+  <div id="servicesList">Loading...</div>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    let businessId = null;
+
+    async function loadServices() {
+      const listEl = document.getElementById('servicesList');
+      const { data: services, error } = await supabaseClient
+        .from('services')
+        .select('id, name, description, price, duration_minutes, active')
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        listEl.textContent = 'Failed to load services: ' + error.message;
+        return;
+      }
+
+      if (!services.length) {
+        listEl.textContent = 'No services added yet.';
+        return;
+      }
+
+      listEl.innerHTML = services.map(s => `
+        <div style="border:1px solid #ccc; padding:8px; margin-bottom:8px;">
+          <strong>${s.name}</strong> — ₦${s.price} — ${s.duration_minutes} min
+          <br>${s.description || ''}
+          <br>Status: ${s.active ? 'Active' : 'Inactive'}
+          <br>
+          <button onclick="toggleActive('${s.id}', ${s.active})">
+            ${s.active ? 'Deactivate' : 'Activate'}
+          </button>
+          <button onclick="deleteService('${s.id}')">Delete</button>
+        </div>
+      `).join('');
+    }
+
+    window.toggleActive = async function(id, currentActive) {
+      await supabaseClient.from('services').update({ active: !currentActive }).eq('id', id);
+      loadServices();
+    };
+
+    window.deleteService = async function(id) {
+      if (!confirm('Delete this service?')) return;
+      await supabaseClient.from('services').delete().eq('id', id);
+      loadServices();
+    };
+
+    document.getElementById('serviceForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const messageEl = document.getElementById('formMessage');
+      messageEl.textContent = 'Adding...';
+
+      const name = document.getElementById('name').value.trim();
+      const description = document.getElementById('description').value.trim();
+      const price = parseFloat(document.getElementById('price').value);
+      const duration = parseInt(document.getElementById('duration').value);
+
+      const { error } = await supabaseClient.from('services').insert({
+        business_id: businessId,
+        name,
+        description,
+        price,
+        duration_minutes: duration,
+        active: true
+      });
+
+      if (error) {
+        messageEl.textContent = 'Failed to add: ' + error.message;
+        return;
+      }
+
+      messageEl.textContent = 'Service added!';
+      document.getElementById('serviceForm').reset();
+      loadServices();
+    });
+
+    (async () => {
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      if (!sessionData.session) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      const userId = sessionData.session.user.id;
+
+      const { data: business, error } = await supabaseClient
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle();
+
+      if (error || !business) {
+        document.getElementById('servicesList').textContent =
+          'You need to create a business first.';
+        document.getElementById('serviceForm').style.display = 'none';
+        return;
+      }
+
+      businessId = business.id;
+      loadServices();
+    })();
+  </script>
+</body>
+</html>
