@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Working Hours — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Working Hours</h1>
+  <p><a href="dashboard.html">← Back to Dashboard</a></p>
+
+  <form id="hoursForm">
+    <div id="daysContainer">Loading...</div>
+    <br>
+    <button type="submit">Save Hours</button>
+  </form>
+  <p id="message"></p>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    let businessId = null;
+
+    function renderDays(existingHours) {
+      const container = document.getElementById('daysContainer');
+      const byDay = {};
+      existingHours.forEach(h => { byDay[h.day_of_week] = h; });
+
+      container.innerHTML = DAYS.map((dayName, i) => {
+        const existing = byDay[i];
+        const isClosed = existing ? existing.is_closed : false;
+        const openTime = existing && existing.open_time ? existing.open_time : '09:00';
+        const closeTime = existing && existing.close_time ? existing.close_time : '18:00';
+
+        return `
+          <div style="border:1px solid #ccc; padding:8px; margin-bottom:8px;">
+            <strong>${dayName}</strong><br>
+            <label>
+              <input type="checkbox" class="closedCheckbox" data-day="${i}" ${isClosed ? 'checked' : ''}>
+              Closed
+            </label><br>
+            Open: <input type="time" class="openTime" data-day="${i}" value="${openTime}">
+            Close: <input type="time" class="closeTime" data-day="${i}" value="${closeTime}">
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadHours() {
+      const { data: hours, error } = await supabaseClient
+        .from('business_hours')
+        .select('day_of_week, open_time, close_time, is_closed')
+        .eq('business_id', businessId);
+
+      if (error) {
+        document.getElementById('daysContainer').textContent = 'Failed to load: ' + error.message;
+        return;
+      }
+
+      renderDays(hours || []);
+    }
+
+    document.getElementById('hoursForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const messageEl = document.getElementById('message');
+      messageEl.textContent = 'Saving...';
+
+      const rows = DAYS.map((_, i) => {
+        const isClosed = document.querySelector(`.closedCheckbox[data-day="${i}"]`).checked;
+        const openTime = document.querySelector(`.openTime[data-day="${i}"]`).value;
+        const closeTime = document.querySelector(`.closeTime[data-day="${i}"]`).value;
+
+        return {
+          business_id: businessId,
+          day_of_week: i,
+          open_time: isClosed ? null : openTime,
+          close_time: isClosed ? null : closeTime,
+          is_closed: isClosed
+        };
+      });
+
+      const { error } = await supabaseClient
+        .from('business_hours')
+        .upsert(rows, { onConflict: 'business_id,day_of_week' });
+
+      if (error) {
+        messageEl.textContent = 'Failed to save: ' + error.message;
+        return;
+      }
+
+      messageEl.textContent = 'Hours saved!';
+    });
+
+    (async () => {
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      if (!sessionData.session) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      const userId = sessionData.session.user.id;
+
+      const { data: business, error } = await supabaseClient
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle();
+
+      if (error || !business) {
+        document.getElementById('daysContainer').textContent =
+          'You need to create a business first.';
+        document.getElementById('hoursForm').style.display = 'none';
+        return;
+      }
+
+      businessId = business.id;
+      loadHours();
+    })();
+  </script>
+</body>
+</html>
