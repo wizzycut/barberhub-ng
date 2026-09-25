@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Your Business — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Create Your Business</h1>
+  <form id="businessForm">
+    <label>Business Name<br>
+      <input type="text" id="name" required>
+    </label><br><br>
+    <label>Description<br>
+      <textarea id="description" rows="3"></textarea>
+    </label><br><br>
+    <label>WhatsApp Number (e.g. 2348012345678)<br>
+      <input type="tel" id="whatsapp" required>
+    </label><br><br>
+    <label>Phone<br>
+      <input type="tel" id="phone">
+    </label><br><br>
+    <label>City<br>
+      <select id="city" required>
+        <option value="">Select a city</option>
+        <option>Abuja</option>
+        <option>Lagos</option>
+        <option>Port Harcourt</option>
+        <option>Ibadan</option>
+        <option>Benin City</option>
+        <option>Enugu</option>
+        <option>Kano</option>
+      </select>
+    </label><br><br>
+    <button type="submit">Create Business</button>
+  </form>
+  <p id="message"></p>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    function slugify(text) {
+      return text.toString().toLowerCase().trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)+/g, '');
+    }
+
+    (async () => {
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      if (!sessionData.session) {
+        window.location.href = 'login.html';
+        return;
+      }
+    })();
+
+    document.getElementById('businessForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const messageEl = document.getElementById('message');
+      messageEl.textContent = 'Creating business...';
+
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      const userId = sessionData.session.user.id;
+
+      const name = document.getElementById('name').value.trim();
+      const description = document.getElementById('description').value.trim();
+      const whatsapp = document.getElementById('whatsapp').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const city = document.getElementById('city').value;
+
+      let slug = slugify(name);
+      slug = slug + '-' + Math.floor(Math.random() * 10000);
+
+      const { error } = await supabaseClient.from('businesses').insert({
+        owner_id: userId,
+        name,
+        slug,
+        description,
+        whatsapp_number: whatsapp,
+        phone,
+        city,
+        status: 'pending'
+      });
+
+      if (error) {
+        messageEl.textContent = 'Failed to create business: ' + error.message;
+        return;
+      }
+
+      messageEl.textContent = 'Business created! Redirecting to dashboard...';
+      setTimeout(() => { window.location.href = 'dashboard.html'; }, 1000);
+    });
+  </script>
+</body>
+</html>
