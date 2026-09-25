@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barber Login — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Barber Login</h1>
+  <form id="loginForm">
+    <label>Email<br>
+      <input type="email" id="email" required>
+    </label><br><br>
+    <label>Password<br>
+      <input type="password" id="password" required>
+    </label><br><br>
+    <button type="submit">Log In</button>
+  </form>
+  <p id="message"></p>
+  <p><a href="register.html">Don't have an account? Register</a></p>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const messageEl = document.getElementById('message');
+      messageEl.textContent = 'Logging in...';
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        messageEl.textContent = 'Login failed: ' + error.message;
+        return;
+      }
+
+      const userId = data.user.id;
+      const { data: profile, error: profileError } = await supabaseClient
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) {
+        messageEl.textContent = 'Logged in, but could not load profile: ' + profileError.message;
+        return;
+      }
+
+      if (profile.role !== 'barber' && profile.role !== 'admin') {
+        messageEl.textContent = 'This login is for barbers only.';
+        await supabaseClient.auth.signOut();
+        return;
+      }
+
+      messageEl.textContent = 'Login successful! Redirecting...';
+      window.location.href = 'dashboard.html';
+    });
+  </script>
+</body>
+</html>
