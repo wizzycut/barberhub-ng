@@ -11,8 +11,24 @@
   <p id="greeting">Loading...</p>
   <div id="content"></div>
 
+  <div id="navMenu" style="display:none;">
+    <hr>
+    <h2>Manage Your Business</h2>
+    <ul>
+      <li><a href="services.html">Services</a></li>
+      <li><a href="staff.html">Staff</a></li>
+      <li><a href="hours.html">Working Hours</a></li>
+    </ul>
+    <button id="logoutBtn">Log Out</button>
+  </div>
+
   <script src="../shared/js/supabase-client.js"></script>
   <script>
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await supabaseClient.auth.signOut();
+      window.location.href = 'login.html';
+    });
+
     (async () => {
       const { data: sessionData } = await supabaseClient.auth.getSession();
       if (!sessionData.session) {
@@ -47,6 +63,7 @@
         contentEl.innerHTML =
           '<p>Business: ' + business.name + '</p>' +
           '<p>Status: ' + business.status + '</p>';
+        document.getElementById('navMenu').style.display = 'block';
       }
     })();
   </script>
