@@ -20,7 +20,45 @@
   <script src="../shared/js/supabase-client.js"></script>
   <script>
     const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const HOURS_12 = Array.from({length: 12}, (_, i) => i + 1);
+    const MINUTES = ['00', '15', '30', '45'];
     let businessId = null;
+
+    function timeSelectHTML(prefix, day) {
+      const hourOptions = HOURS_12.map(h => `<option value="${h}">${h}</option>`).join('');
+      const minOptions = MINUTES.map(m => `<option value="${m}">${m}</option>`).join('');
+      return `
+        <select class="${prefix}Hour" data-day="${day}">${hourOptions}</select> :
+        <select class="${prefix}Min" data-day="${day}">${minOptions}</select>
+        <select class="${prefix}Ampm" data-day="${day}">
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+        </select>
+      `;
+    }
+
+    function to24Hour(hour12, min, ampm) {
+      let h = parseInt(hour12);
+      if (ampm === 'AM' && h === 12) h = 0;
+      if (ampm === 'PM' && h !== 12) h += 12;
+      return String(h).padStart(2, '0') + ':' + min;
+    }
+
+    function from24Hour(timeStr) {
+      const [hStr, mStr] = timeStr.split(':');
+      let h = parseInt(hStr);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      let h12 = h % 12;
+      if (h12 === 0) h12 = 12;
+      const min = MINUTES.includes(mStr) ? mStr : '00';
+      return { hour: h12, min, ampm };
+    }
+
+    function setSelectValues(prefix, day, hour, min, ampm) {
+      document.querySelector(`.${prefix}Hour[data-day="${day}"]`).value = hour;
+      document.querySelector(`.${prefix}Min[data-day="${day}"]`).value = min;
+      document.querySelector(`.${prefix}Ampm[data-day="${day}"]`).value = ampm;
+    }
 
     function renderDays(existingHours) {
       const container = document.getElementById('daysContainer');
@@ -30,8 +68,6 @@
       container.innerHTML = DAYS.map((dayName, i) => {
         const existing = byDay[i];
         const isClosed = existing ? existing.is_closed : false;
-        const openTime = existing && existing.open_time ? existing.open_time : '09:00';
-        const closeTime = existing && existing.close_time ? existing.close_time : '18:00';
 
         return `
           <div style="border:1px solid #ccc; padding:8px; margin-bottom:8px;">
@@ -40,11 +76,19 @@
               <input type="checkbox" class="closedCheckbox" data-day="${i}" ${isClosed ? 'checked' : ''}>
               Closed
             </label><br>
-            Open: <input type="time" class="openTime" data-day="${i}" value="${openTime}">
-            Close: <input type="time" class="closeTime" data-day="${i}" value="${closeTime}">
+            Open: ${timeSelectHTML('open', i)}<br>
+            Close: ${timeSelectHTML('close', i)}
           </div>
         `;
       }).join('');
+
+      DAYS.forEach((_, i) => {
+        const existing = byDay[i];
+        const openParts = from24Hour(existing && existing.open_time ? existing.open_time : '09:00');
+        const closeParts = from24Hour(existing && existing.close_time ? existing.close_time : '18:00');
+        setSelectValues('open', i, openParts.hour, openParts.min, openParts.ampm);
+        setSelectValues('close', i, closeParts.hour, closeParts.min, closeParts.ampm);
+      });
     }
 
     async function loadHours() {
@@ -68,14 +112,20 @@
 
       const rows = DAYS.map((_, i) => {
         const isClosed = document.querySelector(`.closedCheckbox[data-day="${i}"]`).checked;
-        const openTime = document.querySelector(`.openTime[data-day="${i}"]`).value;
-        const closeTime = document.querySelector(`.closeTime[data-day="${i}"]`).value;
+
+        const openHour = document.querySelector(`.openHour[data-day="${i}"]`).value;
+        const openMin = document.querySelector(`.openMin[data-day="${i}"]`).value;
+        const openAmpm = document.querySelector(`.openAmpm[data-day="${i}"]`).value;
+
+        const closeHour = document.querySelector(`.closeHour[data-day="${i}"]`).value;
+        const closeMin = document.querySelector(`.closeMin[data-day="${i}"]`).value;
+        const closeAmpm = document.querySelector(`.closeAmpm[data-day="${i}"]`).value;
 
         return {
           business_id: businessId,
           day_of_week: i,
-          open_time: isClosed ? null : openTime,
-          close_time: isClosed ? null : closeTime,
+          open_time: isClosed ? null : to24Hour(openHour, openMin, openAmpm),
+          close_time: isClosed ? null : to24Hour(closeHour, closeMin, closeAmpm),
           is_closed: isClosed
         };
       });
