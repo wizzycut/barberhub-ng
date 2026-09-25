@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staff — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Manage Staff</h1>
+  <p><a href="dashboard.html">← Back to Dashboard</a></p>
+
+  <h2>Add Staff Member</h2>
+  <form id="staffForm">
+    <label>Name<br>
+      <input type="text" id="name" required>
+    </label><br><br>
+    <label>Bio<br>
+      <textarea id="bio" rows="2"></textarea>
+    </label><br><br>
+    <label>Phone<br>
+      <input type="tel" id="phone">
+    </label><br><br>
+    <label>Role (e.g. Barber, Senior Barber)<br>
+      <input type="text" id="role">
+    </label><br><br>
+    <button type="submit">Add Staff Member</button>
+  </form>
+  <p id="formMessage"></p>
+
+  <h2>Your Staff</h2>
+  <div id="staffList">Loading...</div>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    let businessId = null;
+
+    async function loadStaff() {
+      const listEl = document.getElementById('staffList');
+      const { data: staff, error } = await supabaseClient
+        .from('staff')
+        .select('id, name, bio, phone, role, active')
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        listEl.textContent = 'Failed to load staff: ' + error.message;
+        return;
+      }
+
+      if (!staff.length) {
+        listEl.textContent = 'No staff added yet.';
+        return;
+      }
+
+      listEl.innerHTML = staff.map(s => `
+        <div style="border:1px solid #ccc; padding:8px; margin-bottom:8px;">
+          <strong>${s.name}</strong> ${s.role ? '— ' + s.role : ''}
+          <br>${s.bio || ''}
+          <br>${s.phone || ''}
+          <br>Status: ${s.active ? 'Active' : 'Inactive'}
+          <br>
+          <button onclick="toggleActive('${s.id}', ${s.active})">
+            ${s.active ? 'Deactivate' : 'Activate'}
+          </button>
+          <button onclick="deleteStaff('${s.id}')">Delete</button>
+        </div>
+      `).join('');
+    }
+
+    window.toggleActive = async function(id, currentActive) {
+      await supabaseClient.from('staff').update({ active: !currentActive }).eq('id', id);
+      loadStaff();
+    };
+
+    window.deleteStaff = async function(id) {
+      if (!confirm('Delete this staff member?')) return;
+      await supabaseClient.from('staff').delete().eq('id', id);
+      loadStaff();
+    };
+
+    document.getElementById('staffForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const messageEl = document.getElementById('formMessage');
+      messageEl.textContent = 'Adding...';
+
+      const name = document.getElementById('name').value.trim();
+      const bio = document.getElementById('bio').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const role = document.getElementById('role').value.trim();
+
+      const { error } = await supabaseClient.from('staff').insert({
+        business_id: businessId,
+        name,
+        bio,
+        phone,
+        role,
+        active: true
+      });
+
+      if (error) {
+        messageEl.textContent = 'Failed to add: ' + error.message;
+        return;
+      }
+
+      messageEl.textContent = 'Staff member added!';
+      document.getElementById('staffForm').reset();
+      loadStaff();
+    });
+
+    (async () => {
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      if (!sessionData.session) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      const userId = sessionData.session.user.id;
+
+      const { data: business, error } = await supabaseClient
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle();
+
+      if (error || !business) {
+        document.getElementById('staffList').textContent =
+          'You need to create a business first.';
+        document.getElementById('staffForm').style.display = 'none';
+        return;
+      }
+
+      businessId = business.id;
+      loadStaff();
+    })();
+  </script>
+</body>
+</html>
