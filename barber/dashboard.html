@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Dashboard</h1>
+  <p id="greeting">Loading...</p>
+  <div id="content"></div>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    (async () => {
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      if (!sessionData.session) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      const userId = sessionData.session.user.id;
+
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', userId)
+        .single();
+
+      document.getElementById('greeting').textContent =
+        'Good day, ' + (profile?.full_name || 'there') + ' 👋';
+
+      const { data: business } = await supabaseClient
+        .from('businesses')
+        .select('id, name, status')
+        .eq('owner_id', userId)
+        .maybeSingle();
+
+      const contentEl = document.getElementById('content');
+
+      if (!business) {
+        contentEl.innerHTML =
+          '<p>You have not created a business yet.</p>' +
+          '<a href="create-business.html"><button>Create Your Business</button></a>';
+      } else {
+        contentEl.innerHTML =
+          '<p>Business: ' + business.name + '</p>' +
+          '<p>Status: ' + business.status + '</p>';
+      }
+    })();
+  </script>
+</body>
+</html>
