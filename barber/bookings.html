@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookings — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Bookings</h1>
+  <p><a href="dashboard.html">← Back to Dashboard</a></p>
+
+  <div id="bookingsList">Loading...</div>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    let businessId = null;
+
+    function formatDateTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleString('en-NG', {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+        timeZone: 'Africa/Lagos'
+      });
+    }
+
+    async function loadBookings() {
+      const listEl = document.getElementById('bookingsList');
+
+      const { data: appointments, error } = await supabaseClient
+        .from('appointments')
+        .select(`
+          id, start_time, status, payment_status, total_price,
+          customer:customer_id(full_name, phone),
+          staff:staff_id(name),
+          service:service_id(name)
+        `)
+        .eq('business_id', businessId)
+        .order('start_time', { ascending: true });
+
+      if (error) {
+        listEl.textContent = 'Failed to load bookings: ' + error.message;
+        return;
+      }
+
+      if (!appointments.length) {
+        listEl.textContent = 'No bookings yet.';
+        return;
+      }
+
+      listEl.innerHTML = appointments.map(a => `
+        <div style="border:1px solid #ccc; padding:8px; margin-bottom:8px;">
+          <strong>${formatDateTime(a.start_time)}</strong><br>
+          Customer: ${a.customer?.full_name || 'Unknown'} (${a.customer?.phone || ''})<br>
+          Staff: ${a.staff?.name || 'Unknown'}<br>
+          Service: ${a.service?.name || 'Unknown'} — ₦${a.total_price}<br>
+          Status: <strong>${a.status}</strong> | Payment: ${a.payment_status}<br>
+          <button onclick="updateStatus('${a.id}', 'confirmed')" ${a.status !== 'pending' ? 'disabled' : ''}>Confirm</button>
+          <button onclick="updateStatus('${a.id}', 'completed')" ${a.status !== 'confirmed' ? 'disabled' : ''}>Complete</button>
+          <button onclick="updateStatus('${a.id}', 'cancelled')" ${['completed','cancelled'].includes(a.status) ? 'disabled' : ''}>Cancel</button>
+          <button onclick="updateStatus('${a.id}', 'no_show')" ${a.status !== 'confirmed' ? 'disabled' : ''}>No Show</button>
+        </div>
+      `).join('');
+    }
+
+    window.updateStatus = async function(appointmentId, newStatus) {
+      const { error } = await supabaseClient
+        .from('appointments')
+        .update({ status: newStatus })
+        .eq('id', appointmentId);
+
+      if (error) {
+        alert('Failed to update: ' + error.message);
+        return;
+      }
+
+      loadBookings();
+    };
+
+    (async () => {
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      if (!sessionData.session) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      const userId = sessionData.session.user.id;
+
+      const { data: business, error } = await supabaseClient
+        .from('businesses')
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle();
+
+      if (error || !business) {
+        document.getElementById('bookingsList').textContent =
+          'You need to create a business first.';
+        return;
+      }
+
+      businessId = business.id;
+      loadBookings();
+    })();
+  </script>
+</body>
+</html>
