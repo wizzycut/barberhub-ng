@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BarberHub NG — Find a Barber</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>BarberHub NG</h1>
+  <p>Find and book barbers near you</p>
+
+  <form id="searchForm">
+    <input type="text" id="searchInput" placeholder="Search barber or service">
+    <select id="citySelect">
+      <option value="">All Cities</option>
+      <option>Abuja</option>
+      <option>Lagos</option>
+      <option>Port Harcourt</option>
+      <option>Ibadan</option>
+      <option>Benin City</option>
+      <option>Enugu</option>
+      <option>Kano</option>
+    </select>
+    <button type="submit">Search</button>
+  </form>
+
+  <h2>Barbers</h2>
+  <div id="businessList">Loading...</div>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    async function loadBusinesses(searchTerm, city) {
+      const listEl = document.getElementById('businessList');
+      listEl.textContent = 'Loading...';
+
+      let query = supabaseClient
+        .from('businesses')
+        .select('id, name, slug, description, city, cover_url, logo_url')
+        .eq('status', 'approved');
+
+      if (searchTerm) {
+        query = query.ilike('name', `%${searchTerm}%`);
+      }
+      if (city) {
+        query = query.eq('city', city);
+      }
+
+      const { data: businesses, error } = await query.order('created_at', { ascending: false });
+
+      if (error) {
+        listEl.textContent = 'Failed to load: ' + error.message;
+        return;
+      }
+
+      if (!businesses.length) {
+        listEl.textContent = 'No barbers found.';
+        return;
+      }
+
+      listEl.innerHTML = businesses.map(b => `
+        <div style="border:1px solid #ccc; padding:8px; margin-bottom:8px;">
+          <strong>${b.name}</strong><br>
+          ${b.city ? b.city : ''}<br>
+          ${b.description || ''}<br>
+          <a href="barber.html?id=${b.id}"><button>View Profile</button></a>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('searchForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const searchTerm = document.getElementById('searchInput').value.trim();
+      const city = document.getElementById('citySelect').value;
+      loadBusinesses(searchTerm, city);
+    });
+
+    loadBusinesses('', '');
+  </script>
+</body>
+</html>
