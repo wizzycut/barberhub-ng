@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Appointment — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <p><a href="index.html">← Back to Search</a></p>
+  <h1>Book Appointment</h1>
+  <div id="serviceInfo">Loading...</div>
+
+  <div id="bookingForm" style="display:none;">
+    <label>Staff Member<br>
+      <select id="staffSelect"></select>
+    </label><br><br>
+    <label>Date<br>
+      <input type="date" id="dateInput">
+    </label><br><br>
+    <button id="findSlotsBtn">Find Available Times</button>
+
+    <div id="slotsContainer"></div>
+
+    <div id="customerDetails" style="display:none;">
+      <h3>Your Details</h3>
+      <label>Full Name<br>
+        <input type="text" id="customerName" required>
+      </label><br><br>
+      <label>Phone<br>
+        <input type="tel" id="customerPhone" required>
+      </label><br><br>
+      <label>Email<br>
+        <input type="email" id="customerEmail">
+      </label><br><br>
+      <button id="confirmBookingBtn">Confirm Booking</button>
+    </div>
+  </div>
+
+  <p id="message"></p>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const businessId = params.get('businessId');
+    const serviceId = params.get('serviceId');
+
+    let selectedSlot = null;
+    let serviceDuration = null;
+    let servicePrice = null;
+
+    async function init() {
+      const infoEl = document.getElementById('serviceInfo');
+
+      if (!businessId || !serviceId) {
+        infoEl.textContent = 'Missing business or service.';
+        return;
+      }
+
+      const { data: service, error: serviceError } = await supabaseClient
+        .from('services')
+        .select('name, price, duration_minutes')
+        .eq('id', serviceId)
+        .single();
+
+      if (serviceError || !service) {
+        infoEl.textContent = 'Service not found.';
+        return;
+      }
+
+      serviceDuration = service.duration_minutes;
+      servicePrice = service.price;
+
+      infoEl.innerHTML = `<strong>${service.name}</strong> — ₦${service.price} — ${service.duration_minutes} min`;
+
+      const { data: staffList } = await supabaseClient
+        .from('staff_services')
+        .select('staff:staff_id(id, name)')
+        .eq('service_id', serviceId);
+
+      const staffSelect = document.getElementById('staffSelect');
+
+      if (staffList && staffList.length) {
+        staffSelect.innerHTML = staffList
+          .map(s => `<option value="${s.staff.id}">${s.staff.name}</option>`)
+          .join('');
+      } else {
+        const { data: allStaff } = await supabaseClient
+          .from('staff')
+          .select('id, name')
+          .eq('business_id', businessId)
+          .eq('active', true);
+
+        staffSelect.innerHTML = (allStaff || [])
+          .map(s => `<option value="${s.id}">${s.name}</option>`)
+          .join('');
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('dateInput').value = today;
+      document.getElementById('dateInput').min = today;
+
+      document.getElementById('bookingForm').style.display = 'block';
+    }
+
+    document.getElementById('findSlotsBtn').addEventListener('click', async () => {
+      const staffId = document.getElementById('staffSelect').value;
+      const date = document.getElementById('dateInput').value;
+      const slotsEl = document.getElementById('slotsContainer');
+
+      if (!staffId || !date) {
+        slotsEl.textContent = 'Select a staff member and date.';
+        return;
+      }
+
+      slotsEl.textContent = 'Loading available times...';
+
+      const { data: slots, error } = await supabaseClient.rpc('get_available_slots', {
+        p_business_id: businessId,
+        p_staff_id: staffId,
+        p_service_id: serviceId,
+        p_date: date
+      });
+
+      if (error) {
+        slotsEl.textContent = 'Failed to load times: ' + error.message;
+        return;
+      }
+
+      if (!slots || !slots.length) {
+        slotsEl.textContent = 'No available times for this date.';
+        return;
+      }
+
+      slotsEl.innerHTML = slots.map(s => {
+        const time = new Date(s.slot_time);
+        const label = time.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Lagos' });
+        return `<button class="slotBtn" data-time="${s.slot_time}">${label}</button>`;
+      }).join(' ');
+
+      document.querySelectorAll('.slotBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedSlot = btn.dataset.time;
+          document.getElementById('customerDetails').style.display = 'block';
+          document.getElementById('message').textContent = 'Selected: ' + btn.textContent;
+        });
+      });
+    });
+
+    document.getElementById('confirmBookingBtn').addEventListener('click', async () => {
+      const messageEl = document.getElementById('message');
+
+      if (!selectedSlot) {
+        messageEl.textContent = 'Please select a time slot.';
+        return;
+      }
+
+      const name = document.getElementById('customerName').value.trim();
+      const phone = document.getElementById('customerPhone').value.trim();
+      const email = document.getElementById('customerEmail').value.trim();
+      const staffId = document.getElementById('staffSelect').value;
+
+      if (!name || !phone) {
+        messageEl.textContent = 'Name and phone are required.';
+        return;
+      }
+
+      messageEl.textContent = 'Booking...';
+
+      const { data: sessionData } = await supabaseClient.auth.getSession();
+      const profileId = sessionData.session ? sessionData.session.user.id : null;
+
+      let { data: existingCustomer } = await supabaseClient
+        .from('customers')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('phone', phone)
+        .maybeSingle();
+
+      let customerId;
+
+      if (existingCustomer) {
+        customerId = existingCustomer.id;
+      } else {
+        const { data: newCustomer, error: customerError } = await supabaseClient
+          .from('customers')
+          .insert({
+            business_id: businessId,
+            profile_id: profileId,
+            full_name: name,
+            phone,
+            email
+          })
+          .select('id')
+          .single();
+
+        if (customerError) {
+          messageEl.textContent = 'Failed to save customer: ' + customerError.message;
+          return;
+        }
+        customerId = newCustomer.id;
+      }
+
+      const startTime = new Date(selectedSlot);
+      const endTime = new Date(startTime.getTime() + serviceDuration * 60000);
+
+      const { error: bookingError } = await supabaseClient.from('appointments').insert({
+        business_id: businessId,
+        staff_id: staffId,
+        service_id: serviceId,
+        customer_id: customerId,
+        profile_id: profileId,
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
+        status: 'pending',
+        payment_status: 'unpaid',
+        total_price: servicePrice,
+        deposit_amount: 0
+      });
+
+      if (bookingError) {
+        messageEl.textContent = 'Booking failed: ' + bookingError.message;
+        return;
+      }
+
+      messageEl.textContent = 'Booking confirmed! The barber will reach out to confirm.';
+      document.getElementById('bookingForm').style.display = 'none';
+    });
+
+    init();
+  </script>
+</body>
+</html>
