@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barber Profile — BarberHub NG</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <p><a href="index.html">← Back to Search</a></p>
+  <div id="profileContent">Loading...</div>
+
+  <script src="../shared/js/supabase-client.js"></script>
+  <script>
+    const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    function formatTime(t) {
+      if (!t) return '';
+      const [h, m] = t.split(':');
+      let hour = parseInt(h);
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      let h12 = hour % 12;
+      if (h12 === 0) h12 = 12;
+      return h12 + ':' + m + ' ' + ampm;
+    }
+
+    function whatsappLink(number, businessName) {
+      const cleanNumber = number.replace(/[^0-9]/g, '');
+      const message = encodeURIComponent(`Hi, I found your business ${businessName} on BarberHub NG.`);
+      return `https://wa.me/${cleanNumber}?text=${message}`;
+    }
+
+    async function loadProfile() {
+      const params = new URLSearchParams(window.location.search);
+      const businessId = params.get('id');
+      const contentEl = document.getElementById('profileContent');
+
+      if (!businessId) {
+        contentEl.textContent = 'No business specified.';
+        return;
+      }
+
+      const { data: business, error } = await supabaseClient
+        .from('businesses')
+        .select('id, name, description, city, phone, whatsapp_number, status')
+        .eq('id', businessId)
+        .eq('status', 'approved')
+        .single();
+
+      if (error || !business) {
+        contentEl.textContent = 'Business not found.';
+        return;
+      }
+
+      const { data: services } = await supabaseClient
+        .from('services')
+        .select('id, name, description, price, duration_minutes')
+        .eq('business_id', businessId)
+        .eq('active', true);
+
+      const { data: staff } = await supabaseClient
+        .from('staff')
+        .select('id, name, bio, role')
+        .eq('business_id', businessId)
+        .eq('active', true);
+
+      const { data: hours } = await supabaseClient
+        .from('business_hours')
+        .select('day_of_week, open_time, close_time, is_closed')
+        .eq('business_id', businessId);
+
+      const hoursByDay = {};
+      (hours || []).forEach(h => { hoursByDay[h.day_of_week] = h; });
+
+      const hoursHTML = DAYS.map((dayName, i) => {
+        const h = hoursByDay[i];
+        if (!h || h.is_closed) return `<div>${dayName}: Closed</div>`;
+        return `<div>${dayName}: ${formatTime(h.open_time)} - ${formatTime(h.close_time)}</div>`;
+      }).join('');
+
+      const servicesHTML = (services && services.length)
+        ? services.map(s => `
+            <div style="border:1px solid #ccc; padding:8px; margin-bottom:8px;">
+              <strong>${s.name}</strong> — ₦${s.price} — ${s.duration_minutes} min
+              <br>${s.description || ''}
+              <br><a href="booking.html?businessId=${businessId}&serviceId=${s.id}">
+                <button>Book This Service</button>
+              </a>
+            </div>
+          `).join('')
+        : '<p>No services listed yet.</p>';
+
+      const staffHTML = (staff && staff.length)
+        ? staff.map(s => `
+            <div>
+              <strong>${s.name}</strong> ${s.role ? '— ' + s.role : ''}
+              <br>${s.bio || ''}
+            </div>
+          `).join('')
+        : '<p>No staff listed yet.</p>';
+
+      contentEl.innerHTML = `
+        <h1>${business.name}</h1>
+        <p>${business.city || ''}</p>
+        <p>${business.description || ''}</p>
+        ${business.whatsapp_number ? `<a href="${whatsappLink(business.whatsapp_number, business.name)}"><button>Chat on WhatsApp</button></a>` : ''}
+
+        <h2>Services</h2>
+        ${servicesHTML}
+
+        <h2>Staff</h2>
+        ${staffHTML}
+
+        <h2>Opening Hours</h2>
+        ${hoursHTML}
+      `;
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>
